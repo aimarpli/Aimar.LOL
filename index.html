@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La curiosidad mato al gato JAJAJAJA</title>
+    <!-- Load Tailwind CSS for zero-margin fullscreen layout -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Ensure the dynamically injected YouTube iframe fills the entire viewport */
+        #player {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            border: 0;
+            display: block;
+        }
+    </style>
+</head>
+<body class="m-0 p-0 w-screen h-screen overflow-hidden bg-black">
+    <!-- Target container that the YouTube IFrame Player API replaces with an iframe -->
+    <div id="player"></div>
+
+    <!-- Transparent full-screen interaction layer to capture first click/tap if unmuted autoplay was blocked -->
+    <div id="unmute-shield" class="fixed inset-0 z-10 hidden cursor-pointer"></div>
+
+    <script>
+        let ytPlayer = null;
+        let pendingUnmute = false;
+
+        // 1. Dynamically load the official YouTube IFrame Player API script
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        /**
+         * Callback invoked automatically by the YouTube IFrame Player API once ready.
+         * Initializes the player with hidden controls, autoplay, and strict-origin referrer policy.
+         */
+        function onYouTubeIframeAPIReady() {
+            try {
+                ytPlayer = new YT.Player('player', {
+                    width: '100%',
+                    height: '100%',
+                    videoId: 'dQw4w9WgXcQ',
+                    playerVars: {
+                        autoplay: 1,
+                        controls: 0,
+                        disablekb: 1,
+                        fs: 0,
+                        iv_load_policy: 3,
+                        modestbranding: 1,
+                        playsinline: 1,
+                        rel: 0,
+                        origin: window.location.origin !== 'null' ? window.location.origin : undefined
+                    },
+                    events: {
+                        onReady: onPlayerReady,
+                        onStateChange: onPlayerStateChange,
+                        onError: onPlayerError
+                    }
+                });
+
+                // Explicitly set referrerpolicy on the generated iframe to prevent Error 153
+                const iframe = document.getElementById('player');
+                if (iframe && iframe.tagName === 'IFRAME') {
+                    iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+                    iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+                }
+            } catch (err) {
+                console.error('Failed to initialize YouTube player:', err);
+            }
+        }
+
+        /**
+         * Attempts unmuted autoplay at 100% volume.
+         * If browser autoplay policies block unmuted playback, falls back to muted autoplay
+         * and arms an invisible full-screen click/tap listener to unmute at 100% immediately.
+         */
+        function onPlayerReady(event) {
+            const player = event.target;
+            player.unMute();
+            player.setVolume(100);
+            player.playVideo();
+
+            // Verify shortly after if playback started; if blocked by browser audio policy, start muted
+            setTimeout(() => {
+                try {
+                    const state = player.getPlayerState();
+                    if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING) {
+                        player.mute();
+                        player.setVolume(100);
+                        player.playVideo();
+                        armFirstInteractionUnmute();
+                    }
+                } catch (e) {
+                    console.error('Autoplay verification error:', e);
+                }
+            }, 600);
+        }
+
+        /**
+         * Keeps volume locked at 100% during playback.
+         */
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.PLAYING && !pendingUnmute) {
+                try {
+                    event.target.unMute();
+                    event.target.setVolume(100);
+                } catch (e) {
+                    console.error('Volume enforcement error:', e);
+                }
+            }
+        }
+
+        /**
+         * Logs player errors (such as Error 153 if opened via file:// without a local HTTP server).
+         */
+        function onPlayerError(event) {
+            console.error('YouTube Player Error Code:', event.data);
+        }
+
+        /**
+         * Activates a transparent overlay to capture the very first tap/click anywhere on screen
+         * and restore 100% audio without displaying any visible controls or text.
+         */
+        function armFirstInteractionUnmute() {
+            pendingUnmute = true;
+            const shield = document.getElementById('unmute-shield');
+            shield.classList.remove('hidden');
+
+            const unlockAudio = () => {
+                if (!ytPlayer) return;
+                try {
+                    ytPlayer.unMute();
+                    ytPlayer.setVolume(100);
+                    ytPlayer.playVideo();
+                } catch (e) {
+                    console.error('Failed to unmute on interaction:', e);
+                }
+                pendingUnmute = false;
+                shield.classList.add('hidden');
+                window.removeEventListener('pointerdown', unlockAudio);
+                window.removeEventListener('keydown', unlockAudio);
+            };
+
+            window.addEventListener('pointerdown', unlockAudio, { once: true });
+            window.addEventListener('keydown', unlockAudio, { once: true });
+        }
+    </script>
+</body>
+</html>
